@@ -187,13 +187,6 @@ footer small{color:var(--mute);font-size:11.5px;flex-basis:100%}
 .mapbtn{border:0;padding:9px 14px;font-weight:600;color:var(--ink)}
 .mapbtn:hover{filter:none;background:var(--soft)}
 .cl{background:#12262B;color:#fff;border:3px solid #fff;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.4)}
-/* легендарные частицы вокруг самых вкусных меток (heat 3) */
-.fx-wrap{background:none!important;border:0!important}
-.fx-wrap .halo{position:absolute;left:-16px;top:-16px;width:32px;height:32px;border-radius:50%;border:2px solid rgba(224,162,27,.85);box-shadow:0 0 10px 2px rgba(224,162,27,.6);animation:fxPulse 1.8s ease-in-out infinite}
-.fx-wrap .spark{position:absolute;left:0;top:0;width:7px;height:7px;margin:-3.5px;border-radius:50%;background:radial-gradient(circle,#fff 0%,#FFD400 40%,rgba(224,162,27,0) 72%);animation:fxOrbit 2.4s linear infinite}
-@keyframes fxPulse{0%,100%{transform:scale(.85);opacity:.5}50%{transform:scale(1.06);opacity:1}}
-@keyframes fxOrbit{from{transform:rotate(0) translateX(17px)}to{transform:rotate(360deg) translateX(17px)}}
-@media(prefers-reduced-motion:reduce){.fx-wrap .halo,.fx-wrap .spark{animation:none}}
 .pop b{font-size:14.5px}.pop div{margin-top:3px}.pop a{color:#0E7C6B;font-weight:500;margin-right:8px}
 .leaflet-popup-content{margin:12px 14px}
 #toast{position:fixed;bottom:22px;left:50%;transform:translate(-50%,20px);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:99px;opacity:0;pointer-events:none;transition:.25s;z-index:2000;font-weight:500}
@@ -216,7 +209,6 @@ body #toast{bottom:calc(var(--dock-h) + 14px);transition:opacity .25s,transform 
 @keyframes down{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
 @keyframes pop{from{opacity:0;transform:translateX(-50%) scale(.85)}to{opacity:1;transform:translateX(-50%) scale(1)}}
 @keyframes ptIn{from{opacity:0;transform:scale(0)}to{opacity:1;transform:scale(1)}}
-@keyframes flame{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
 @keyframes shimmer{to{background-position:-200% 0}}
 @keyframes bump{40%{transform:scale(1.4)}}
 @keyframes sectIn{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
@@ -228,7 +220,6 @@ body #toast{bottom:calc(var(--dock-h) + 14px);transition:opacity .25s,transform 
 .lead:active{transform:scale(.99)}
 .lead.enter{animation:up .45s var(--ease) backwards;animation-delay:calc(var(--i) * 45ms)}
 .heat{font-size:12px;letter-spacing:-2px;white-space:nowrap;align-self:center}
-.heat.h3{animation:flame 1.3s ease-in-out infinite}
 path.pt.enter{transform-box:fill-box;transform-origin:center;animation:ptIn .5s var(--spring) backwards}
 .dock button{transition:transform .18s var(--spring),box-shadow .2s,background .2s,filter .15s}
 .dock button:hover:not(:disabled){transform:translateY(-2px)}
@@ -283,7 +274,7 @@ button,.chips label,.tier,.pill{transition:transform .15s var(--spring),backgrou
       </div>
       <div class="frow">
         <select id="sort" aria-label="Сортировка">
-          <option value="score">🔥 Сначала самые вкусные</option>
+          <option value="score">🔥 Сначала приоритетные</option>
           <option value="dist">Ближе к центру карты</option>
           <option value="name">По названию</option>
           <option value="status">По статусу</option>
@@ -549,17 +540,6 @@ const cluster = L.markerClusterGroup({
     return L.divIcon({ html: `<div class="cl" style="width:${s}px;height:${s}px">${n}</div>`, className: '', iconSize: [s, s] });
   }
 }).addTo(map);
-
-// отдельная панель под точками — для «легендарных» частиц
-map.createPane('fxPane');
-map.getPane('fxPane').style.zIndex = 350;
-map.getPane('fxPane').style.pointerEvents = 'none';
-const fxLayer = L.layerGroup().addTo(map);
-function legendaryFx(l) {
-  const sparks = Array.from({ length: 6 }, (_, i) => `<span class="spark" style="animation-delay:-${(i * 0.4).toFixed(1)}s"></span>`).join('');
-  const icon = L.divIcon({ className: 'fx-wrap', html: `<span class="halo"></span>${sparks}`, iconSize: [0, 0], iconAnchor: [0, 0] });
-  return L.marker([l.lat, l.lon], { icon, interactive: false, keyboard: false, pane: 'fxPane' });
-}
 
 // легенда-фильтр
 let legendOpen = prefs.legend ?? !matchMedia('(max-width:820px)').matches;
@@ -944,7 +924,7 @@ function card(l, i = 0, rank = 0, anim = false) {
     h('div', { class: 'lh' },
       h('span', { class: 'rank' }, String(rank)),
       h('b', {}, l.name),
-      l.heat ? h('span', { class: 'heat h' + l.heat, title: 'Вкусность: ' + l.heat + ' из 3 (оценка ' + l.score + ')' }, '🔥'.repeat(l.heat)) : null,
+      l.heat ? h('span', { class: 'heat h' + l.heat, title: 'Приоритет: ' + l.heat + ' из 3 (оценка ' + l.score + ')' }, '🔥'.repeat(l.heat)) : null,
       h('span', { class: 'badge', title: 'Тип контакта: ' + TIERS[l.tier].l }, TIERS[l.tier].l),
       h('button', { class: 'star' + (r.f ? ' on' : ''), type: 'button', 'aria-label': 'Избранное', onclick: e => { e.stopPropagation(); rec(l.id).f = !r.f; saveData(); updateLeadVisual(l); } }, r.f ? '★' : '☆'),
       h('button', { class: 'trash', type: 'button', title: 'Удалить из результатов', 'aria-label': 'Удалить из результатов', onclick: e => { e.stopPropagation(); removeLead(l); } }, '🗑')),
@@ -1019,14 +999,13 @@ function render() {
   const list = visible();
   const page = list.slice(0, view.shown);
   cluster.clearLayers();
-  fxLayer.clearLayers();
   const box = $('#list');
   box.replaceChildren();
   if (!list.length) {
     box.append(h('div', { class: 'empty' }, h('big', {}, leads.length ? '🔎' : '🗺️'),
       leads.length ? 'Ничего не подошло под фильтры.' : 'Пока пусто. Расширьте область, добавьте категории или выберите «Любые» в поле «Контакты».'));
   }
-  const markers = [], fxMarkers = [];
+  const markers = [];
   const anim = renderAnim; renderAnim = false;
   let idx = 0;
   for (const l of page) {
@@ -1042,12 +1021,10 @@ function render() {
       if (el) { el.classList.add('active'); el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
     });
     markers.push(l.m);
-    if (l.heat === 3) fxMarkers.push(legendaryFx(l));
     box.append(card(l, idx, idx + 1, anim));
     idx++;
   }
   cluster.addLayers(markers);
-  fxMarkers.forEach(m => fxLayer.addLayer(m));
   if (list.length > page.length) {
     box.append(h('button', { class: 'more', type: 'button', onclick: () => { view.shown += PAGE; const y = box.scrollTop; render(); box.scrollTop = y; } },
       `Показать ещё ${Math.min(PAGE, list.length - page.length)} из ${list.length - page.length}`));
@@ -1095,7 +1072,7 @@ async function runSearch(getArea, cats, sig) {
     if (!leads.length) { setStat('Ничего не найдено.'); return; }
     setRes(true);
     const c = tierCounts();
-    setStat(`Найдено ${found.length}${found.length !== leads.length ? ' новых, всего ' + leads.length : ''} (🔥 ${leads.filter(l => l.heat === 3).length}): email ${c.email}, телефон ${c.phone}, соцсети ${c.social}, без контактов ${c.none}.`);
+    setStat(`Найдено ${found.length}${found.length !== leads.length ? ' новых, всего ' + leads.length : ''} (🔥 приоритетных ${leads.filter(l => l.heat === 3).length}): email ${c.email}, телефон ${c.phone}, соцсети ${c.social}, без контактов ${c.none}.`);
     $('#list').scrollTop = 0;
   } catch (e) {
     if (e.name === 'AbortError' || sig.aborted) setStat('Поиск отменён.');
@@ -1260,8 +1237,8 @@ const cell = v => { v = String(v ?? ''); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v
 $('#csv').onclick = () => {
   const list = visible();
   if (!list.length) return setStat('Нечего экспортировать.', true);
-  const rows = [['Название', 'Категория', 'Тип', 'Адрес', 'Телефон', 'Email', 'Facebook', 'Instagram', 'Часы работы', 'Тип контакта', 'Широта', 'Долгота', 'Статус', 'Заметка', 'Избранное', 'Оценка', 'OSM']]
-    .concat(list.map(l => [l.name, l.cat, l.sub, l.addr, l.phone, l.email, l.fb, l.ig, l.oh, TIERS[l.tier]?.l || '', l.lat, l.lon, statusOf(l), (data[l.id] || {}).n || '', (data[l.id] || {}).f ? 'да' : '', l.score, l.osmType ? `https://www.openstreetmap.org/${l.osmType}/${l.osmId}` : '']));
+  const rows = [['Название', 'Категория', 'Тип', 'Адрес', 'Телефон', 'Email', 'Facebook', 'Instagram', 'Часы работы', 'Тип контакта', 'Приоритет', 'Широта', 'Долгота', 'Статус', 'Заметка', 'Избранное', 'Оценка', 'OSM']]
+    .concat(list.map(l => [l.name, l.cat, l.sub, l.addr, l.phone, l.email, l.fb, l.ig, l.oh, TIERS[l.tier]?.l || '', l.heat, l.lat, l.lon, statusOf(l), (data[l.id] || {}).n || '', (data[l.id] || {}).f ? 'да' : '', l.score, l.osmType ? `https://www.openstreetmap.org/${l.osmType}/${l.osmId}` : '']));
   const blob = new Blob(['\ufeff' + rows.map(r => r.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
   const a = h('a', { href: URL.createObjectURL(blob), download: 'leads-' + new Date().toISOString().slice(0, 10) + '.csv' });
   document.body.append(a); a.click(); a.remove();
