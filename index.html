@@ -35,6 +35,7 @@ button{font-weight:500;border:1px solid var(--ink);background:var(--ink);color:v
 button:hover:not(:disabled){filter:brightness(1.15)}
 button:active:not(:disabled){transform:translateY(1px)}
 button.sec{background:var(--acc);border-color:var(--acc);color:#fff}
+button.sec:disabled{opacity:.5;cursor:not-allowed}
 button.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
 button.ghost:hover:not(:disabled){background:var(--soft);filter:none}
 button.icon{padding:6px 9px;line-height:1}
@@ -139,6 +140,9 @@ input[type=checkbox]{accent-color:var(--acc)}
 .lead.active{outline:2px solid var(--c);outline-offset:1px}
 .lead.t-email{--c:var(--t-email)}.lead.t-phone{--c:var(--t-phone)}.lead.t-social{--c:var(--t-social)}.lead.t-none{--c:var(--t-none)}
 .lead.dead{opacity:.5}
+.lead.sel{border-color:var(--acc2);box-shadow:0 0 0 2px color-mix(in srgb,var(--acc2) 55%,transparent)}
+.pickbox{width:19px;height:19px;flex:none;margin:1px 2px 0 0;cursor:pointer}
+body.pickmode .lead{cursor:pointer}
 .lh{display:flex;align-items:flex-start;gap:8px}
 .lh b{flex:1;font-size:15.5px;line-height:1.25}
 .rank{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:var(--gc,#888)}
@@ -290,6 +294,15 @@ button,.chips label,.tier,.pill{transition:transform .15s var(--spring),backgrou
       <div class="frow">
         <button class="ghost" id="bulk" title="Пометить видимые как «написал»" style="flex:1">✓ Видимые → «написал»</button>
       </div>
+      <div class="frow">
+        <button class="ghost" id="selectMode" title="Выбрать результаты для удаления" aria-pressed="false" style="flex:1">🧺 Корзинка</button>
+        <button class="ghost" id="clearAll" title="Очистить все результаты">🗑 Очистить</button>
+      </div>
+      <div class="frow" id="pickBar" hidden>
+        <button class="ghost" id="pickAll" style="flex:1">Выбрать все</button>
+        <button class="ghost" id="pickNone" style="flex:1">Снять</button>
+        <button class="sec" id="pickDel" disabled style="flex:1">Удалить 0</button>
+      </div>
       <div class="sum"><span id="count"></span><span id="funnel"></span></div>
     </div>
     <div id="list"><div class="empty"><big>🗺️</big>Введите место сверху или нажмите «Искать в этой местности» внизу.</div></div>
@@ -376,6 +389,7 @@ button,.chips label,.tier,.pill{transition:transform .15s var(--spring),backgrou
         <button class="ghost" id="expData">⬇ Экспорт данных (JSON)</button>
         <button class="ghost" id="impData">⬆ Импорт данных</button>
         <button class="ghost" id="pruneData">Очистить записи без результатов</button>
+        <button class="ghost" id="restoreData">↩ Вернуть удалённые</button>
       </div>
       <input type="file" id="impFile" accept="application/json,.json" hidden>
     </section>
@@ -500,7 +514,8 @@ tpl = { sub: tpl.sub || DEF_TPL.sub, body: tpl.body || DEF_TPL.body };
 // ---------- состояние ----------
 let leads = [], busy = false, lastPlace = '', activeId = null;
 let place = null, job = null, renderAnim = false; // place — найденное сверху место; job — текущий поиск (для отмены)
-const view = { tiers: new Set(Object.keys(TIERS)), status: 'all', fav: false, shown: PAGE };
+const view = { tiers: new Set(Object.keys(TIERS)), status: 'all', fav: false, shown: PAGE, pickMode: false };
+const pick = new Set();
 
 const plainLead = l => ({
   id: l.id, osmType: l.osmType, osmId: l.osmId, name: l.name, catKey: l.catKey, cat: l.cat, sub: l.sub,
@@ -510,6 +525,7 @@ const plainLead = l => ({
 const persistLeads = () => store.set('lf-leads', { v: 1, list: leads.map(plainLead) });
 const cached = store.get('lf-leads', null);
 if (cached && Array.isArray(cached.list)) leads = cached.list;
+leads = leads.filter(l => !(prefs.dismissed && prefs.dismissed[l.id]));
 
 const isMobile = () => matchMedia('(max-width:820px)').matches;
 if (!isMobile()) document.body.classList.add('res-open');
@@ -926,13 +942,14 @@ function card(l, i = 0, rank = 0, anim = false) {
   const osm = l.osmType && l.osmId ? `https://www.openstreetmap.org/${l.osmType}/${l.osmId}` : '';
 
   return h('article', {
-    class: `lead t-${l.tier}${st === 'не интересно' ? ' dead' : ''}${activeId === l.id ? ' active' : ''}${anim ? ' enter' : ''}`,
+    class: `lead t-${l.tier}${st === 'не интересно' ? ' dead' : ''}${activeId === l.id ? ' active' : ''}${pick.has(l.id) ? ' sel' : ''}${anim ? ' enter' : ''}`,
     'data-id': l.id, tabindex: '0', style: '--i:' + Math.min(i, 14) + ';--gc:' + group,
-    onclick: () => focusLead(l),
-    onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); focusLead(l); } },
+    onclick: () => { if (view.pickMode) togglePick(l); else focusLead(l); },
+    onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) { e.preventDefault(); if (view.pickMode) togglePick(l); else focusLead(l); } },
     onmouseenter: () => l.m && l.m.setStyle({ radius: 11 }), onmouseleave: () => l.m && l.m.setStyle(markerStyle(l))
   },
     h('div', { class: 'lh' },
+      view.pickMode ? h('input', { type: 'checkbox', class: 'pickbox', 'aria-label': 'Выбрать результат', checked: pick.has(l.id), onclick: e => e.stopPropagation(), onchange: () => togglePick(l) }) : null,
       h('span', { class: 'rank' }, String(rank)),
       h('b', {}, l.name),
       l.heat ? h('span', { class: 'heat h' + l.heat, title: 'Вкусность: ' + l.heat + ' из 3 (оценка ' + l.score + ')' }, '🔥'.repeat(l.heat)) : null,
@@ -1071,12 +1088,13 @@ async function runSearch(getArea, cats, sig) {
     if (!area.keepView) map.fitBounds(area.bounds);
     setStat('Загружаю бизнесы…');
     const els = await overpass(buildQuery(area, cats, Number($('#limit').value), $('#contact').value, $('#withSite').checked), sig);
-    let found = parse(els, cats).filter(l => !($('#noSocial').checked && (l.fb || l.ig)));
+    let found = parse(els, cats).filter(l => !($('#noSocial').checked && (l.fb || l.ig)) && !(prefs.dismissed && prefs.dismissed[l.id]));
     if ($('#merge').checked && leads.length) {
       const seen = new Set(leads.map(dedupeKey));
       for (const l of found) if (!seen.has(dedupeKey(l))) { seen.add(dedupeKey(l)); leads.push(l); }
     } else leads = found;
     activeId = null;
+    pick.clear();
     $('#sort').value = 'score';
     view.shown = PAGE;
     renderAnim = true;
@@ -1173,7 +1191,7 @@ $('#go').onclick = async () => {
 
 $('#goHere').onclick = () => search(async () => areaSmart());
 $('#cancel').onclick = () => { if (job) job.abort(); };
-$('#clr').onclick = () => { drawn.clearLayers(); cluster.clearLayers(); leads = []; activeId = null; persistLeads(); render(); setStat(''); updateGo(); setDrawer(false); toast('Сброшено'); };
+$('#clr').onclick = () => { drawn.clearLayers(); cluster.clearLayers(); leads = []; activeId = null; pick.clear(); syncPickBar(); persistLeads(); render(); setStat(''); updateGo(); setDrawer(false); toast('Сброшено'); };
 
 // массовое действие
 $('#bulk').onclick = () => {
@@ -1207,6 +1225,56 @@ $('#impFile').onchange = async e => {
   } catch { setStat('Не удалось прочитать файл', true); }
   e.target.value = '';
 };
+// ---------- очистка: всё или выборочно (корзинка) ----------
+function togglePick(l) {
+  pick.has(l.id) ? pick.delete(l.id) : pick.add(l.id);
+  const el = document.querySelector(`.lead[data-id="${(window.CSS && CSS.escape) ? CSS.escape(l.id) : l.id}"]`);
+  if (el) { el.classList.toggle('sel', pick.has(l.id)); const cb = el.querySelector('.pickbox'); if (cb) cb.checked = pick.has(l.id); }
+  syncPickBar();
+}
+function syncPickBar() {
+  const del = $('#pickDel');
+  if (del) { del.textContent = 'Удалить ' + pick.size; del.disabled = !pick.size; }
+}
+$('#selectMode').onclick = () => {
+  view.pickMode = !view.pickMode;
+  pick.clear();
+  document.body.classList.toggle('pickmode', view.pickMode);
+  const b = $('#selectMode');
+  b.setAttribute('aria-pressed', String(view.pickMode));
+  b.textContent = view.pickMode ? '🧺 Готово' : '🧺 Корзинка';
+  $('#pickBar').hidden = !view.pickMode;
+  syncPickBar();
+  render();
+};
+$('#pickAll').onclick = () => { visible().forEach(l => pick.add(l.id)); syncPickBar(); render(); };
+$('#pickNone').onclick = () => { pick.clear(); syncPickBar(); render(); };
+$('#pickDel').onclick = () => {
+  if (!pick.size) return toast('Ничего не выбрано');
+  prefs.dismissed = prefs.dismissed || {};
+  const n = pick.size;
+  for (const id of pick) prefs.dismissed[id] = 1;
+  leads = leads.filter(l => !pick.has(l.id));
+  if (activeId && pick.has(activeId)) activeId = null;
+  pick.clear();
+  savePrefs(); persistLeads(); syncPickBar(); render();
+  toast('Удалено: ' + n + ' · отменить — «Вернуть удалённые»');
+};
+$('#clearAll').onclick = () => {
+  if (!leads.length) return toast('Список уже пуст');
+  if (!confirm('Очистить все результаты (' + leads.length + ')? Отметки, заметки и избранное сохранятся.')) return;
+  leads = []; activeId = null; pick.clear();
+  persistLeads(); syncPickBar(); render();
+  toast('Результаты очищены');
+};
+$('#restoreData').onclick = () => {
+  const n = prefs.dismissed ? Object.keys(prefs.dismissed).length : 0;
+  if (!n) return toast('Скрытых бизнесов нет');
+  prefs.dismissed = {};
+  savePrefs();
+  toast('Возвращено: ' + n + ' · появятся при следующем поиске');
+};
+
 $('#pruneData').onclick = () => {
   const ids = new Set(leads.map(l => l.id));
   let removed = 0;
